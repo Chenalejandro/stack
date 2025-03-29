@@ -1,4 +1,4 @@
-import { isTeamSystemPermission, listTeamPermissionDefinitions, teamSystemPermissionStringToDBType } from "@/lib/permissions";
+import { isTeamSystemPermission, listPermissionDefinitions, teamSystemPermissionStringToDBType } from "@/lib/permissions";
 import { fullProjectInclude, projectPrismaToCrud } from "@/lib/projects";
 import { ensureSharedProvider } from "@/lib/request-checks";
 import { retryTransaction } from "@/prisma-client";
@@ -33,8 +33,40 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
         },
       ] as const;
 
-      const permissions = await listTeamPermissionDefinitions(tx, auth.tenancy);
+      const teamPermissions = await listPermissionDefinitions(tx, "TEAM", auth.tenancy);
+      const projectPermissions = await listPermissionDefinitions(tx, "PROJECT", auth.tenancy);
 
+      // Handle user default permissions
+      const userDefaultPerms = data.config?.user_default_permissions?.map((p) => p.id);
+      if (userDefaultPerms) {
+        if (!userDefaultPerms.every((id) => projectPermissions.some((perm) => perm.id === id))) {
+          throw new StatusError(StatusError.BadRequest,
+            `Invalid user default permission ids: ${userDefaultPerms.filter(id => !projectPermissions.some(perm => perm.id === id)).join(', ')}`);
+        }
+
+        // Remove existing default project permissions
+        await tx.permission.updateMany({
+          where: {
+            projectConfigId: oldProject.config.id,
+          },
+          data: {
+            isDefaultProjectPermission: false,
+          },
+        });
+
+        // Add new default project permissions
+        await tx.permission.updateMany({
+          where: {
+            projectConfigId: oldProject.config.id,
+            queryableId: {
+              in: userDefaultPerms,
+            },
+          },
+          data: {
+            isDefaultProjectPermission: true,
+          },
+        });
+      }
 
       for (const param of dbParams) {
         const defaultPerms = data.config?.[param.optionName]?.map((p) => p.id);
@@ -43,7 +75,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
           continue;
         }
 
-        if (!defaultPerms.every((id) => permissions.some((perm) => perm.id === id))) {
+        if (!defaultPerms.every((id) => teamPermissions.some((perm) => perm.id === id))) {
           throw new StatusError(StatusError.BadRequest, "Invalid team default permission ids");
         }
 
