@@ -17,10 +17,10 @@ declare module "yup" {
 
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface Schema<TType, TContext, TDefault, TFlags> {
-    getNested<K extends keyof TType>(path: K): yup.Schema<TType[K], TContext, TDefault, TFlags>,
+    getNested<K extends keyof NonNullable<TType>>(path: K): yup.Schema<NonNullable<TType>[K], TContext, TDefault, TFlags>,
 
     // the default types for concat kinda suck, so let's fix that
-    concat<U extends yup.AnySchema>(schema: U): yup.Schema<Omit<TType, keyof yup.InferType<U>> & yup.InferType<U>, TContext, TDefault, TFlags>,
+    concat<U extends yup.AnySchema>(schema: U): yup.Schema<Omit<NonNullable<TType>, keyof yup.InferType<U>> & yup.InferType<U> | (TType & (null | undefined)), TContext, TDefault, TFlags>,
   }
 }
 
@@ -151,9 +151,9 @@ export function yupObject<A extends yup.Maybe<yup.AnyObject>, B extends yup.Obje
           if (unknownKeys.length > 0) {
             // TODO "did you mean XYZ"
             return context.createError({
-              message: `${context.path} contains unknown properties: ${unknownKeys.join(', ')}`,
+              message: `${context.path || "Object"} contains unknown properties: ${unknownKeys.join(', ')}`,
               path: context.path,
-              params: { unknownKeys },
+              params: { unknownKeys, availableKeys },
             });
           }
         }
@@ -195,6 +195,47 @@ export function yupUnion<T extends yup.ISchema<any>[]>(...args: T): yup.MixedSch
       path: context.path,
     });
   });
+}
+
+export function yupRecord<K extends yup.StringSchema, T extends yup.AnySchema>(
+  keySchema: K,
+  valueSchema: T,
+): yup.MixedSchema<Record<string, yup.InferType<T>>> {
+  return yupObject().unknown(true).test(
+    'record',
+    '${path} must be a record of valid values',
+    async function (value: unknown, context: yup.TestContext) {
+      if (value == null) return true;
+      const { path, createError } = this as any;
+      if (typeof value !== 'object') {
+        return createError({ message: `${path} must be an object` });
+      }
+
+      // Validate each property using the provided valueSchema
+      for (const key of Object.keys(value)) {
+        // Validate the key
+        await yupValidate(keySchema, key, context.options);
+
+        // Validate the value
+        try {
+          await yupValidate(valueSchema, (value as Record<string, unknown>)[key], {
+            ...context.options,
+            context: {
+              ...context.options.context,
+              path: path ? `${path}.${key}` : key,
+            },
+          });
+        } catch (e: any) {
+          return createError({
+            path: path ? `${path}.${key}` : key,
+            message: e.message,
+          });
+        }
+      }
+
+      return true;
+    },
+  ) as any;
 }
 
 export function ensureObjectSchema<T extends yup.AnyObject>(schema: yup.Schema<T>): yup.ObjectSchema<T> & typeof schema {

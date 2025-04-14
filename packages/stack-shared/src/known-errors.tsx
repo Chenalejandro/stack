@@ -1209,6 +1209,36 @@ const InvalidPollingCodeError = createKnownErrorConstructor(
   (json: any) => [json] as const,
 );
 
+const CliAuthError = createKnownErrorConstructor(
+  KnownError,
+  "CLI_AUTH_ERROR",
+  (message: string) => [
+    400,
+    message,
+  ] as const,
+  (json: any) => [json.message] as const,
+);
+
+const CliAuthExpiredError = createKnownErrorConstructor(
+  KnownError,
+  "CLI_AUTH_EXPIRED_ERROR",
+  (message: string = "CLI authentication request expired. Please try again.") => [
+    400,
+    message,
+  ] as const,
+  (json: any) => [json.message] as const,
+);
+
+const CliAuthUsedError = createKnownErrorConstructor(
+  KnownError,
+  "CLI_AUTH_USED_ERROR",
+  (message: string = "This authentication token has already been used.") => [
+    400,
+    message,
+  ] as const,
+  (json: any) => [json.message] as const,
+);
+
 
 const ApiKeyNotValid = createKnownErrorConstructor(
   KnownError,
@@ -1258,6 +1288,15 @@ const ApiKeyNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const PublicApiKeyCannotBeRevoked = createKnownErrorConstructor(
+  ApiKeyNotValid,
+  "PUBLIC_API_KEY_CANNOT_BE_REVOKED",
+  () => [
+    400,
+    "Public API keys cannot be revoked by the secretscanner endpoint.",
+  ] as const,
+  () => [] as const,
+);
 
 const PermissionIdAlreadyExists = createKnownErrorConstructor(
   KnownError,
@@ -1284,6 +1323,9 @@ export const KnownErrors = {
   AllOverloadsFailed,
   ProjectAuthenticationError,
   PermissionIdAlreadyExists,
+  CliAuthError,
+  CliAuthExpiredError,
+  CliAuthUsedError,
   InvalidProjectAuthentication,
   ProjectKeyWithoutAccessType,
   InvalidAccessType,
@@ -1321,6 +1363,7 @@ export const KnownErrors = {
   UserIdDoesNotExist,
   UserNotFound,
   ApiKeyNotFound,
+  PublicApiKeyCannotBeRevoked,
   ProjectNotFound,
   SignUpNotEnabled,
   PasswordAuthenticationNotEnabled,
