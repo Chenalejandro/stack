@@ -56,6 +56,8 @@ async function main() {
   console.log();
 
   const startAt = Math.max(0, +(process.argv[2] || "1") - 1);
+  const flags = process.argv.slice(3);
+  const skipUsers = flags.includes("--skip-users");
 
   const projects = await prismaClient.project.findMany({
     select: {
@@ -75,7 +77,7 @@ async function main() {
     const projectId = projects[i].id;
     await recurse(`[project ${i + 1}/${projects.length}] ${projectId} ${projects[i].displayName}`, async (recurse) => {
       const [currentProject, users] = await Promise.all([
-        expectStatusCode(200, `/api/v1/projects/current`, {
+        expectStatusCode(200, `/api/v1/internal/projects/current`, {
           method: "GET",
           headers: {
             "x-stack-project-id": projectId,
@@ -93,20 +95,25 @@ async function main() {
         }),
       ]);
       if (users.pagination?.next_cursor) throwErr("Users are paginated? Please update the verify-data-integrity.ts script to handle this.");
-      if (currentProject.user_count !== users.items.length) throwErr("User count mismatch.");
+      if (currentProject.user_count !== users.items.length) throwErr("User count mismatch.", {
+        projectUserCount: currentProject.user_count,
+        usersUserCount: users.items.length,
+      });
 
-      for (let j = 0; j < users.items.length; j++) {
-        const user = users.items[j];
-        await recurse(`[user ${j + 1}/${users.items.length}] ${user.display_name ?? user.primary_email}`, async (recurse) => {
-          await expectStatusCode(200, `/api/v1/users/${user.id}`, {
-            method: "GET",
-            headers: {
-              "x-stack-project-id": projectId,
-              "x-stack-access-type": "admin",
-              "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-            },
+      if (!skipUsers) {
+        for (let j = 0; j < users.items.length; j++) {
+          const user = users.items[j];
+          await recurse(`[user ${j + 1}/${users.items.length}] ${user.display_name ?? user.primary_email}`, async (recurse) => {
+            await expectStatusCode(200, `/api/v1/users/${user.id}`, {
+              method: "GET",
+              headers: {
+                "x-stack-project-id": projectId,
+                "x-stack-access-type": "admin",
+                "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+              },
+            });
           });
-        });
+        }
       }
     });
   }

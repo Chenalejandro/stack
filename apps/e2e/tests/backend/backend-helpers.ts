@@ -1,4 +1,4 @@
-import { InternalProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { AdminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -191,6 +191,7 @@ export namespace Auth {
         "refreshTokenId": expect.any(String),
         "aud": expect.any(String),
         "sub": expect.any(String),
+        "role": "authenticated",
         "branchId": "main",
       });
     }
@@ -882,8 +883,19 @@ export namespace ProjectApiKey {
           api_key: apiKey,
         },
       });
-      expect(response.status).oneOf([200, 404]);
+      expect(response.status).oneOf([200, 401, 404]);
       return response.body;
+    }
+
+    export async function revoke(apiKeyId: string) {
+      const response = await niceBackendFetch(`/api/v1/user-api-keys/${apiKeyId}`, {
+        method: "PATCH",
+        accessType: "server",
+        body: {
+          revoked: true,
+        },
+      });
+      return response;
     }
   }
 
@@ -908,8 +920,20 @@ export namespace ProjectApiKey {
           api_key: apiKey,
         },
       });
-      expect(response.status).oneOf([200, 404]);
+      expect(response.status).oneOf([200, 401, 404]);
       return response.body;
+    }
+
+
+    export async function revoke(apiKeyId: string) {
+      const response = await niceBackendFetch(`/api/v1/team-api-keys/${apiKeyId}`, {
+        method: "PATCH",
+        accessType: "server",
+        body: {
+          revoked: true,
+        },
+      });
+      return response;
     }
   }
 }
@@ -986,8 +1010,8 @@ export namespace Project {
     };
   }
 
-  export async function updateCurrent(adminAccessToken: string, body: Partial<InternalProjectsCrud["Admin"]["Create"]>) {
-    const response = await niceBackendFetch(`/api/v1/projects/current`, {
+  export async function updateCurrent(adminAccessToken: string, body: Partial<AdminUserProjectsCrud["Admin"]["Create"]>) {
+    const response = await niceBackendFetch(`/api/v1/internal/projects/current`, {
       accessType: "admin",
       method: "PATCH",
       body,
@@ -1001,7 +1025,7 @@ export namespace Project {
     };
   }
 
-  export async function createAndGetAdminToken(body?: Partial<InternalProjectsCrud["Admin"]["Create"]>) {
+  export async function createAndGetAdminToken(body?: Partial<AdminUserProjectsCrud["Admin"]["Create"]>) {
     backendContext.set({
       projectKeys: InternalProjectKeys,
       userAuth: null,
@@ -1029,7 +1053,7 @@ export namespace Project {
     };
   }
 
-  export async function createAndSwitch(body?: Partial<InternalProjectsCrud["Admin"]["Create"]>) {
+  export async function createAndSwitch(body?: Partial<AdminUserProjectsCrud["Admin"]["Create"]>) {
     const createResult = await Project.createAndGetAdminToken(body);
     backendContext.set({
       projectKeys: {
@@ -1096,6 +1120,15 @@ export namespace Team {
     `);
   }
 
+  export async function addPermission(teamId: string, userId: string, permissionId: string) {
+    const response = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/${permissionId}`, {
+      method: "POST",
+      accessType: "server",
+      body: {},
+    });
+    return response;
+  }
+
   export async function sendInvitation(mail: string | Mailbox, teamId: string) {
     const response = await niceBackendFetch("/api/v1/team-invitations/send-code", {
       method: "POST",
@@ -1146,6 +1179,60 @@ export namespace Team {
     };
   }
 }
+
+export namespace User {
+  export function setBackendContextFromUser({ mailbox, accessToken, refreshToken }: {mailbox: Mailbox, accessToken: string, refreshToken: string}) {
+      backendContext.set({
+        mailbox,
+        userAuth: {
+          accessToken,
+          refreshToken,
+        },
+      });
+  }
+
+
+  export async function create({ emailAddress }: {emailAddress?: string} = {}) {
+    // Create new mailbox
+    const email = emailAddress ?? `unindexed-mailbox--${randomUUID()}${generatedEmailSuffix}`;
+    const mailbox = createMailbox(email);
+    const password = generateSecureRandomString();
+    const createUserResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email,
+        password,
+        verification_callback_url: "http://localhost:12345/some-callback-url",
+      },
+    });
+      expect(createUserResponse).toMatchObject({
+        status: 200,
+        body: {
+          access_token: expect.any(String),
+          refresh_token: expect.any(String),
+          user_id: expect.any(String),
+        },
+        headers: expect.anything(),
+      });
+      return {
+        userId: createUserResponse.body.user_id,
+        mailbox,
+        accessToken: createUserResponse.body.access_token,
+        refreshToken: createUserResponse.body.refresh_token,
+      };
+  }
+
+  export async function createMultiple(count: number) {
+    const users = [];
+    for (let i = 0; i < count; i++) {
+      const user = await User.create({});
+        users.push(user);
+    }
+    return users;
+  }
+}
+
 
 export namespace Webhook {
   export async function createProjectWithEndpoint() {

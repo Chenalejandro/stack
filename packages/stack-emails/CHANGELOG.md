@@ -1,5 +1,21 @@
 # @stackframe/stack-emails
 
+## 2.8.5
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.5
+  - @stackframe/stack-ui@2.8.5
+
+## 2.8.4
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.4
+  - @stackframe/stack-ui@2.8.4
+
 ## 2.8.3
 
 ### Patch Changes
