@@ -416,7 +416,7 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
           allow_user_api_keys: row.ProjectConfig.allowUserApiKeys,
           allow_team_api_keys: row.ProjectConfig.allowTeamApiKeys,
           domains: row.ProjectConfig.Domains
-            .sort((a: any, b: any) => new Date(a.createdAt + "Z").getTime() - new Date(b.createdAt + "Z").getTime())
+            .sort((a: any, b: any) => stringCompare(a.domain, b.domain))
             .map((domain: any) => ({
               domain: domain.domain,
               handler_path: domain.handlerPath,
@@ -470,7 +470,7 @@ export async function getProject(projectId: string): Promise<ProjectsCrud["Admin
   if (!getNodeEnvironment().includes("prod")) {
     const legacyResult = await getProjectLegacy(projectId);
     if (!deepPlainEquals(omit(result ?? {}, ["user_count"] as any), omit(legacyResult ?? {}, ["user_count"] as any))) {
-      throw new StackAssertionError("Project result mismatch", {
+      throw new StackAssertionError("Legacy project result mismatch", {
         result,
         legacyResult,
       });
@@ -479,7 +479,7 @@ export async function getProject(projectId: string): Promise<ProjectsCrud["Admin
     const renderedConfig = await rawQuery(getRenderedOrganizationConfigQuery({ projectId, branchId: "main", organizationId: null }));
     if (renderedConfig === null || result === null) {
       if (renderedConfig !== result) {
-        throw new StackAssertionError("Project result mismatch", {
+        throw new StackAssertionError("Config.json project config result mismatch", {
           result,
           renderedConfig,
         });
