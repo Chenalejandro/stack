@@ -70,7 +70,7 @@ export class StackServerInterface extends StackClientInterface {
       return Result.ok(await this.sendServerRequest(path, requestOptions, tokenStoreOrNull));
     } catch (e) {
       for (const errorType of errorsToCatch) {
-        if (e instanceof errorType) {
+        if (errorType.isInstance(e)) {
           return Result.error(e as InstanceType<E>);
         }
       }
@@ -101,7 +101,7 @@ export class StackServerInterface extends StackClientInterface {
       [KnownErrors.CannotGetOwnUserWithoutUser],
     );
     if (responseOrError.status === "error") {
-      if (responseOrError.error instanceof KnownErrors.CannotGetOwnUserWithoutUser) {
+      if (KnownErrors.CannotGetOwnUserWithoutUser.isInstance(responseOrError.error)) {
         return null;
       } else {
         throw new StackAssertionError("Unexpected uncaught error", { cause: responseOrError.error });
@@ -261,7 +261,6 @@ export class StackServerInterface extends StackClientInterface {
     );
     return await response.json();
   }
-
 
   async listServerTeamUsers(teamId: string): Promise<UsersCrud['Server']['Read'][]> {
     const response = await this.sendServerRequest(`/users?team_id=${teamId}`, {}, null);
@@ -451,9 +450,37 @@ export class StackServerInterface extends StackClientInterface {
     );
   }
 
+  async grantServerProjectPermission(userId: string, permissionId: string) {
+    await this.sendServerRequest(
+      urlString`/project-permissions/${userId}/${permissionId}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+  }
+
   async revokeServerTeamUserPermission(teamId: string, userId: string, permissionId: string) {
     await this.sendServerRequest(
       urlString`/team-permissions/${teamId}/${userId}/${permissionId}`,
+      {
+        method: "DELETE",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+  }
+
+  async revokeServerProjectPermission(userId: string, permissionId: string) {
+    await this.sendServerRequest(
+      urlString`/project-permissions/${userId}/${permissionId}`,
       {
         method: "DELETE",
         headers: {
